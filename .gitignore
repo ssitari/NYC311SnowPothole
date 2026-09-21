@@ -1,0 +1,5 @@
+# Raw 311 point layers the site does not need. NTAs.gpkg is committed
+# because data/NTA_311_Rates.geojson is derived from it; these two are the
+# unaggregated complaint points behind its SnowPoints / PotholeComps counts.
+SNowPoints.gpkg
+Potholes.gpkg

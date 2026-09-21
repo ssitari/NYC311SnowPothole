@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Set from PAGE_TITLE in config.js at load; this is the pre-load fallback. -->
+  <title>Winter 2025-26 311 Snow &amp; 2026 Pothole Complaint Rates by NTA</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #edecea;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Toolbar ── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      /* Wrap rather than overflow: below ~900px the toolbar was wider than the
+         window and clipped the Clear selection button off-screen, with no way
+         to scroll to it. */
+      flex-wrap: wrap;
+      row-gap: 6px;
+      gap: 14px;
+      padding: 6px 14px;
+      min-height: 44px;
+      background: #fff;
+      border-bottom: 0.5px solid #ddd;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 200;
+    }
+    #toolbar h1 {
+      font-size: 16.25px;   /* 13px base, +25% */
+      font-weight: 600;
+      color: #222;
+      /* The title names both variables and both time periods, so it is far
+         too long to hold on one line on a laptop. Let it wrap instead of
+         pushing the symbology button and the status text off-screen. */
+      line-height: 1.25;
+      margin-right: 2px;
+    }
+    .ctrl-group { display: flex; align-items: center; gap: 5px; }
+    .ctrl-label { font-size: 11px; color: #888; white-space: nowrap; }
+
+    select {
+      font-size: 12px;
+      padding: 3px 6px;
+      border: 0.5px solid #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      color: #222;
+      cursor: pointer;
+      height: 26px;
+      max-width: 200px;
+    }
+    select:hover { border-color: #999; }
+    select:focus { outline: none; border-color: #4466cc; }
+
+    /* Static X / Y read-out that stands in for the removed pickers. */
+    #axisReadout { gap: 4px; }
+    .axis-name {
+      font-size: 12px; color: #222; white-space: nowrap;
+      padding: 0 2px; margin-right: 6px;
+    }
+    .axis-name:last-child { margin-right: 0; }
+    @media (max-width: 760px) { #axisReadout { display: none; } }
+
+    /* ── Symbology button ── */
+    #symBtn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 26px;
+      padding: 0 8px;
+      border: 0.5px solid #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      cursor: pointer;
+      font-size: 12px;
+      color: #444;
+      user-select: none;
+      white-space: nowrap;
+      max-width: 80px;        /* Add this */
+      overflow: hidden;       /* Add this */
+    }
+    #symBtn:hover  { border-color: #999; background: #f3f3f3; }
+    #symBtn.open   { border-color: #4466cc; background: #f0f3ff; }
+    #symBtnSwatch {
+      display: grid;
+      grid-template-columns: repeat(3, 7px);   /* Reduced from 9px */
+      grid-template-rows: repeat(3, 7px);      /* Reduced from 9px */
+      gap: 1px;
+      overflow: hidden;                         /* Add this */
+      flex-shrink: 0;                          /* Add this */
+    }
+    .sym-cell { border-radius: 1px; }
+    #symBtnChevron { font-size: 9px; color: #888; }
+
+    /* ── Symbology dropdown ── */
+    #symDropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      background: #fff;
+      border: 0.5px solid #ddd;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      padding: 8px 10px 10px;
+      z-index: 999;
+      min-width: 200px;
+      max-height: calc(100vh - 76px);
+      overflow-y: auto;
+    }
+    #symDropdown.open { display: block; }
+
+    .sym-family-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #aaa;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 4px 3px;
+    }
+    .sym-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 5px;
+      cursor: pointer;
+      border: 1.5px solid transparent;
+      margin-bottom: 2px;
+    }
+    .sym-row:hover { background: #f5f5f5; }
+    .sym-row--active { border-color: #4466cc; background: #f0f3ff; }
+    .sym-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 11px);
+      grid-template-rows: repeat(3, 11px);
+      gap: 1.5px;
+      flex-shrink: 0;
+    }
+    .sym-grid-cell { border-radius: 1.5px; }
+    .sym-row-label { font-size: 11px; color: #444; }
+
+    /* ── Clear + status ── */
+    #clearBtn {
+      font-size: 11px;
+      padding: 3px 10px;
+      border: 0.5px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      color: #444;
+      cursor: pointer;
+      display: none;
+      height: 26px;
+    }
+    #clearBtn:hover { background: #f4f4f4; }
+    #statusText { font-size: 11px; color: #bbb; margin-left: auto; white-space: nowrap; }
+    @media (max-width: 620px) { #statusText { margin-left: 0; } }
+
+    /* ── Main layout ── */
+    #main {
+      display: flex;
+      gap: 8px;
+      padding: 8px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Map pane ── */
+    #mapPane {
+      flex: 13;
+      background: #e0e0e0;  /* Light grey */
+      border-radius: 8px;
+      border: 0.5px solid #ddd;
+      position: relative;
+      overflow: hidden;
+      min-width: 0;
+    }
+    #mapSvg { display: block; width: 100%; height: 100%; }
+    .zone   { cursor: crosshair; }
+
+    /* ── Floating bivariate legend ── */
+    /* Its internal sizes are set inline by drawLegend() in app.js, so it is
+       enlarged here as a whole rather than by editing a dozen px values in
+       the engine. transform keeps the layout box at 220px and scales what is
+       painted; nothing else is positioned against this element, so the
+       unchanged box costs nothing. */
+    #floatLegend {
+      transform: scale(1.5);
+      transform-origin: top left;
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      background: rgba(255,255,255,0.93);
+      border: 0.5px solid #ddd;
+      border-radius: 7px;
+      padding: 9px 11px 10px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      z-index: 10;
+      max-width: 220px;
+    }
+
+    /* ── Zoom controls ── */
+    #zoomControls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      z-index: 10;
+    }
+    .zoom-btn {
+      width: 28px; height: 28px;
+      background: rgba(255,255,255,0.93);
+      border: 0.5px solid #ccc;
+      border-radius: 5px;
+      font-size: 16px;
+      color: #444;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      backdrop-filter: blur(4px);
+      user-select: none;
+    }
+    .zoom-btn:hover  { background: #fff; border-color: #999; }
+    #zoomReset { font-size: 13px; }
+
+    /* ── Selection mode indicator ── */
+    #selModeIndicator {
+      position: absolute;
+      bottom: 14px; right: 14px;
+      background: rgba(255,255,255,0.90);
+      border: 0.5px solid #bbb;
+      border-radius: 4px;
+      font-size: 11px; font-weight: 500;
+      color: #4466cc;
+      padding: 3px 9px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 15;
+    }
+
+    /* ── Shift hint ── */
+    #shiftHint {
+      position: absolute;
+      top: 12px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.88);
+      border: 0.5px solid #ddd;
+      border-radius: 4px;
+      font-size: 10px; color: #888;
+      padding: 3px 8px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      white-space: nowrap;
+      z-index: 10;
+    }
+    #shiftHint.visible { opacity: 1; }
+
+    /* ── Right column ── */
+    #rightCol {
+      flex: 7;
+      min-width: 240px;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── Scatterplot pane ── */
+    #scatterPane {
+      flex: 1;
+      background: #fff;
+      border-radius: 8px;
+      border: 0.5px solid #ddd;
+      overflow: hidden;
+      min-height: 0;
+      position: relative;
+    }
+    #scatterSvg { display: block; width: 100%; height: 100%; }
+
+    /* ── Stats panel ── */
+    #statsPanel {
+      display: none;
+      background: #fff;
+      border-radius: 8px;
+      border: 0.5px solid #ddd;
+      padding: 10px 12px;
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+    .stats-header {
+      display: grid;
+      grid-template-columns: 60px 1fr 1fr 52px;
+      gap: 2px;
+      margin-bottom: 5px;
+      padding-bottom: 5px;
+      border-bottom: 0.5px solid #eee;
+    }
+    .stats-title {
+      font-size: 10px; font-weight: 700;
+      color: #555; text-transform: uppercase;
+      letter-spacing: 0.04em;
+      grid-column: 1; align-self: center;
+    }
+    .stats-col-head {
+      font-size: 10px; font-weight: 600;
+      color: #999; text-align: right;
+    }
+    .stats-col-sel { color: #e07b39; }
+    .stats-row {
+      display: grid;
+      grid-template-columns: 60px 1fr 1fr 52px;
+      gap: 2px; padding: 2px 0;
+    }
+    .stats-label { font-size: 10px; color: #888; }
+    .stats-val {
+      font-size: 11px; color: #333;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .stats-col-sel.stats-val { color: #c05f20; font-weight: 500; }
+    .stats-pct {
+      font-size: 10px; text-align: right;
+      font-variant-numeric: tabular-nums; color: #aaa;
+    }
+    .stats-pct.pos { color: #2a7a3b; }
+    .stats-pct.neg { color: #b03030; }
+    .stats-divider {
+      grid-column: 1/-1;
+      border: none; border-top: 0.5px solid #f0f0f0;
+      margin: 3px 0;
+    }
+    .stats-var-label {
+      grid-column: 1/-1;
+      font-size: 10px; font-weight: 600;
+      color: #888; padding: 3px 0 1px;
+    }
+
+    /* ── Hint bar ── */
+    #scatterHint {
+      text-align: center;
+      font-size: 10px; color: #888;
+      padding: 4px 0 0;
+      flex-shrink: 0;
+    }
+
+    /* ── Tooltip ── */
+    #tooltip {
+      position: fixed;
+      background: rgba(20,20,20,0.88);
+      color: #fff; font-size: 11px;
+      line-height: 1.6; padding: 6px 10px;
+      border-radius: 5px; pointer-events: none;
+      display: none; z-index: 9999; max-width: 240px;
+    }
+    .tip-group { color: #aaa; }
+    .tip-id    { font-weight: 600; }
+    .tip-label { color: #bbb; font-size: 10px; }
+    .tip-val   { font-weight: 600; font-size: 13px; }
+
+    /* ── Loading ── */
+    #loadingMsg {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.92);
+      font-size: 13px; color: #888;
+      z-index: 100; border-radius: 8px;
+    }
+
+    /* ── D3 brush / zoom chrome ── */
+    .selection {
+      fill: rgba(80,120,255,0.08) !important;
+      stroke: #4466cc !important;
+      stroke-width: 1px !important;
+      stroke-dasharray: 4,2 !important;
+    }
+    .handle    { display: none; }
+    .tick text { fill: #888; }
+    .domain    { stroke: #ddd; }
+    .tick line { stroke: #f0f0f0; }
+  </style>
+</head>
+<body>
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <!-- Filled from PAGE_TITLE in config.js -->
+    <h1 id="appTitle"></h1>
+
+    <!-- The variable pairing is fixed in this deployment, so the X/Y
+         <select>s are replaced by a static read-out. app.js populates
+         it from VARIABLES; it skips the pickers when they are absent. -->
+    <div class="ctrl-group" id="axisReadout">
+      <span class="ctrl-label">X</span><span class="axis-name" id="axisXName"></span>
+      <span class="ctrl-label">Y</span><span class="axis-name" id="axisYName"></span>
+    </div>
+
+    <div class="ctrl-group">
+      <label class="ctrl-label">Symbology</label>
+      <div id="symBtn" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Bivariate colour scheme">
+        <span id="symBtnSwatch"></span>
+        <span id="symBtnChevron">▾</span>
+      </div>
+    </div>
+
+    <div id="symDropdown">
+      <div id="symDropdownInner"></div>
+    </div>
+
+    <button id="clearBtn">✕ Clear selection</button>
+    <span id="statusText"></span>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+
+    <!-- Map with floating legend -->
+    <div id="mapPane">
+      <div id="loadingMsg">Loading data…</div>
+      <svg id="mapSvg"></svg>
+
+      <div id="floatLegend"></div>
+
+      <div id="zoomControls">
+        <button class="zoom-btn" id="zoomIn"    title="Zoom in">+</button>
+        <button class="zoom-btn" id="zoomOut"   title="Zoom out">−</button>
+        <button class="zoom-btn" id="zoomReset" title="Reset view">⊙</button>
+      </div>
+
+      <div id="selModeIndicator"></div>
+      <div id="shiftHint">Shift+drag: lasso · Shift+Alt+drag: rectangle</div>
+    </div>
+
+    <!-- Right column -->
+    <div id="rightCol">
+      <div id="scatterPane"><svg id="scatterSvg"></svg></div>
+      <div id="statsPanel"></div>
+      <div id="scatterHint">Shift+drag scatterplot: lasso &nbsp;·&nbsp; Shift+Alt+drag: rectangle &nbsp;·&nbsp; Same on map</div>
+    </div>
+
+  </div>
+
+  <div id="tooltip"></div>
+
+  <style>
+    /* Last flex child of a 100vh column layout, so it can't be clipped. */
+    .page-credit {
+      flex: 0 0 auto; padding: 5px 14px 7px; background: #edecea;
+      font: 11px/1.35 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #78766f;
+    }
+    .page-credit a { color: #52514e; }
+  </style>
+  <!-- Filled from DATA_CREDIT_HTML in config.js -->
+  <footer class="page-credit" id="pageCredit"></footer>
+
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>
