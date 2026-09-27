@@ -1,5 +1,8 @@
 # NYC 311 Snow & Pothole Complaint Rates
 
+This map is to supplement the Data Club Intro to GIS workshop in Fall 2026.  This uses the data from the pothole complaint 
+exercise and the snow complaint data as inspired by the equivalent workshop in Spring 2026.  There is a positive relationship between the complaint rates, but a weak one (r= 0.338 by my initial reckoning). Whether this relationship has more to do with the presence of complainers or the persistence of the snow is something we will talk about together.  At any rate, mostly an opportunity to show the interactive bivariate map template available at https://github.com/ssitari/ChoroplethEDABivariate
+
 A bivariate choropleth of two NYC 311 complaint rates, linked to a scatterplot:
 **winter 2025–26 snow complaints** on the X axis and **2026 pothole complaints**
 on the Y, both per 1,000 residents, by 2020 Neighborhood Tabulation Area.
